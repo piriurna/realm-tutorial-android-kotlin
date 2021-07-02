@@ -7,3 +7,7 @@
 /example/build
 /annotation-processor/build
 /captures
+
+*.apk
+
+app/release/output-metadata.json
