@@ -23,32 +23,30 @@ import org.bson.types.ObjectId
 * that allows the user to add or remove members from the project. All projects are stored in a
 * read-only realm on the logged in user's User object.
 */
-class ProjectActivity : AppCompatActivity() {
-    private var user: io.realm.mongodb.User? = null
-    private var userRealm: Realm? = null
+class ProjectActivity : BaseActivity() {
     private lateinit var recyclerView: RecyclerView
     private lateinit var adapter: ProjectAdapter
 
-    override fun onStart() {
-        super.onStart()
-        user = taskApp.currentUser()
-        if (user == null) {
-            // if no user is currently logged in, start the login activity so the user can authenticate
-            startActivity(Intent(this, LoginActivity::class.java))
-        } else {
-            // TODO: initialize a connection to a realm containing the user's User object
-        }
+    override fun getLayoutId(): Int = R.layout.activity_project
+
+    /**
+     * We need to define the realm for this class. Trying to find a more elegant solution...
+     */
+    override fun onRealmReady(realm: Realm) {
+        this@ProjectActivity.realm = realm
+        setUpRecyclerView(getProjects(realm))
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_project)
+    override fun authorizedOnCreate(savedInstanceState: Bundle?) {
         recyclerView = findViewById(R.id.project_list)
     }
 
-    // TODO: always ensure that the user realm closes when the activity ends via the onStop lifecycle method
 
-    // TODO: always ensure that the user realm closes when the activity ends via the onDestroy lifecycle method
+    override fun onDestroy() {
+        super.onDestroy()
+        recyclerView.adapter = null
+    }
+
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.activity_task_menu, menu)
@@ -77,8 +75,8 @@ class ProjectActivity : AppCompatActivity() {
 
     private fun getProjects(realm: Realm): RealmList<Project> {
         // query for a user object in our user realm, which should only contain our user object
-        // TODO: query the realm to get a copy of the currently logged in user's User object (or null, if the trigger didn't create it yet)
-        var syncedUser : User? = null
+        val syncedUsers : RealmResults<User> = realm.where<User>().sort("id").findAll()
+        val syncedUser : User? = syncedUsers.getOrNull(0) // since there might be no user objects in the results, default to "null"
         // if a user object exists, create the recycler view and the corresponding adapter
         if (syncedUser != null) {
             return syncedUser.memberOf
@@ -87,7 +85,13 @@ class ProjectActivity : AppCompatActivity() {
             // if the user object doesn't yet exist (that is, if there are no users in the user realm), call this function again when it is created
             Log.i(TAG(), "User object not yet initialized, only showing default user project until initialization.")
             // change listener on a query for our user object lets us know when the user object has been created by the auth trigger
-            // TODO: set up a change listener that will set up the recycler view once our trigger initializes the user's User object
+            val changeListener =
+                OrderedRealmCollectionChangeListener<RealmResults<User>> { results, changeSet ->
+                    Log.i(TAG(), "User object initialized, displaying project list.")
+                    setUpRecyclerView(getProjects(realm))
+                }
+            syncedUsers.addChangeListener(changeListener)
+
 
             // user should have a personal project no matter what, so create it if it doesn't already exist
             // RealmRecyclerAdapters only work on managed objects,

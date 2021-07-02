@@ -1,13 +1,8 @@
 package com.mongodb.tasktracker
 
 import android.app.AlertDialog
-import android.content.Intent
 import android.os.Bundle
-import android.util.Log
-import android.view.Menu
-import android.view.MenuItem
 import android.widget.EditText
-import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -15,7 +10,6 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton
 import io.realm.Realm
 import io.realm.mongodb.User
 import io.realm.kotlin.where
-import io.realm.mongodb.sync.SyncConfiguration
 import com.mongodb.tasktracker.model.TaskAdapter
 import com.mongodb.tasktracker.model.Task
 
@@ -24,39 +18,20 @@ import com.mongodb.tasktracker.model.Task
 * create new tasks, and delete existing tasks from the collection. All tasks are stored in a realm
 * and synced across devices using the partition "project=<user id>".
 */
-class TaskActivity : AppCompatActivity() {
-    private lateinit var projectRealm: Realm
-    private var user: User? = null
+class TaskActivity : BaseActivity() {
+
     private lateinit var recyclerView: RecyclerView
     private lateinit var adapter: TaskAdapter
     private lateinit var fab: FloatingActionButton
-    private lateinit var partition: String
 
-    override fun onStart() {
-        super.onStart()
-        user = taskApp.currentUser()
-        if (user == null) {
-            // if no user is currently logged in, start the login activity so the user can authenticate
-            startActivity(Intent(this, LoginActivity::class.java))
-        }
-        else {
-            // get the partition value and name of the project we are currently viewing
-            partition = intent.extras?.getString(PARTITION_EXTRA_KEY)!!
-            val projectName = intent.extras?.getString(PROJECT_NAME_EXTRA_KEY)
+    override fun getLayoutId(): Int = R.layout.activity_task
 
-            // display the name of the project in the action bar via the title member variable of the Activity
-            title = projectName
-
-            // TODO: initialize a connection to a realm containing all of the Tasks in this project
-        }
+    override fun onRealmReady(realm: Realm) {
+        this@TaskActivity.realm = realm
+        setUpRecyclerView(realm, user, partition)
     }
 
-    // TODO: always ensure that the project realm closes when the activity ends via the onStop lifecycle method
-
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_task)
+    override fun authorizedOnCreate(savedInstanceState: Bundle?) {
         recyclerView = findViewById(R.id.task_list)
         fab = findViewById(R.id.floating_action_button)
 
@@ -68,7 +43,12 @@ class TaskActivity : AppCompatActivity() {
                 .setCancelable(true)
                 .setPositiveButton("Create") { dialog, _ -> run {
                     dialog.dismiss()
-                    // TODO: Add a new task to the project by inserting into the realm when the user clicks "create" for a new task.
+                    val task = Task(input.text.toString())
+                    // all realm writes need to occur inside of a transaction
+                    realm.executeTransactionAsync { realm ->
+                        realm.insert(task)
+                    }
+
                 }
                 }
                 .setNegativeButton("Cancel") { dialog, _ -> dialog.cancel()
@@ -81,7 +61,11 @@ class TaskActivity : AppCompatActivity() {
         }
     }
 
-    // TODO: always ensure that the project realm closes when the activity ends via the onDestroy lifecycle method
+    override fun onDestroy() {
+        super.onDestroy()
+        recyclerView.adapter = null
+    }
+
 
 
     private fun setUpRecyclerView(realm: Realm, user: User?, partition: String) {
@@ -89,7 +73,7 @@ class TaskActivity : AppCompatActivity() {
         // Realm provides RealmRecyclerViewAdapter, which you can extend to customize for your application
         // pass the adapter a collection of Tasks from the realm
         // sort this collection so that the displayed order of Tasks remains stable across updates
-        // TODO: Query the realm for Task objects, sorted by a stable order that remains consistent between runs.
+        adapter = TaskAdapter(realm.where<Task>().sort("id").findAll(), user!!, partition)
         recyclerView.layoutManager = LinearLayoutManager(this)
         recyclerView.adapter = adapter
         recyclerView.setHasFixedSize(true)
