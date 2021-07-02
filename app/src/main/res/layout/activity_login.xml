@@ -57,6 +57,11 @@
             android:layout_marginBottom="24dp"
             android:padding="12dp"
             android:text="@string/create_account" />
+
+        <com.google.android.gms.common.SignInButton
+            android:id="@+id/google_sign_in_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
